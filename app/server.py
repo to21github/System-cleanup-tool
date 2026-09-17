@@ -156,4 +156,6 @@ def _run_task(selected: list[str]) -> None:
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8099, threaded=True)
+    # waitress 生产级 WSGI 服务器, 替代 Flask 开发服务器
+    from waitress import serve
+    serve(app, host="0.0.0.0", port=8099, threads=8)
