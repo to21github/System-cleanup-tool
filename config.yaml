@@ -4,7 +4,6 @@ slug: system_cleanup_tool
 description: 一键清理 Home Assistant 历史数据库、系统日志、构建缓存与系统垃圾
 arch:
   - aarch64
-  - amd64
 init: false
 startup: services
 boot: auto
