@@ -1,0 +1,16 @@
+{
+  "configuration": {
+    "purge_keep_days": {
+      "name": "History retention days",
+      "description": "Purge history records older than this many days, 0 to clear all"
+    },
+    "journal_vacuum_size_mb": {
+      "name": "System log cap (MB)",
+      "description": "Vacuum HAOS system journal down to this size"
+    },
+    "docker_log_max_mb": {
+      "name": "Add-on log threshold (MB)",
+      "description": "Truncate add-on runtime logs larger than this size"
+    }
+  }
+}

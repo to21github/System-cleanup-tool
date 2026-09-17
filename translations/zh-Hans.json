@@ -1,0 +1,16 @@
+{
+  "configuration": {
+    "purge_keep_days": {
+      "name": "历史数据保留天数",
+      "description": "清理此天数之前的历史记录，0 表示清空全部历史"
+    },
+    "journal_vacuum_size_mb": {
+      "name": "系统日志上限（MB）",
+      "description": "清理时将 HAOS 系统日志压缩至该大小以内"
+    },
+    "docker_log_max_mb": {
+      "name": "插件日志阈值（MB）",
+      "description": "插件运行日志超过该大小时将被清空"
+    }
+  }
+}
