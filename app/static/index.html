@@ -37,7 +37,7 @@
     color: var(--text);
     min-height: 100vh;
     min-height: 100dvh; /* 移动端动态视口, HA App/Safari 地址栏收放时仍撑满全屏 */
-    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+    padding-bottom: 24px; /* 桌面端底部留白, 移动端在媒体查询中覆盖 */
     font-size: 15px;
   }
   .page { max-width: 720px; margin: 0 auto; padding: 16px; }
@@ -144,12 +144,20 @@
   .err-text { font-size: 11.5px; color: var(--danger); margin-top: 4px; max-width: 180px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  /* 底部操作栏 */
+  /* 底部操作栏: 桌面为内容流内卡片, 移动端固定贴底 */
   .bottom-bar {
-    position: fixed; bottom: 0; left: 0; right: 0;
-    background: var(--card); border-top: 1px solid var(--border);
-    padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
-    z-index: 10;
+    background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+    padding: 14px 16px;
+    margin-top: 16px;
+  }
+  @media (max-width: 720px) {
+    body { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+    .bottom-bar {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      border: none; border-top: 1px solid var(--border); border-radius: 0;
+      margin: 0; padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+      z-index: 10;
+    }
   }
   .bottom-inner { max-width: 720px; margin: 0 auto; display: flex; align-items: center; gap: 16px; }
   .total-info { flex: 1; }
@@ -220,19 +228,19 @@
     </div>
   </div>
 
-</div>
-
-<div class="bottom-bar">
-  <div class="bottom-inner">
-    <div class="total-info">
-      <div class="total-label">预计可释放</div>
-      <div class="total-value none" id="totalValue">0 B</div>
+  <div class="bottom-bar">
+    <div class="bottom-inner">
+      <div class="total-info">
+        <div class="total-label">预计可释放</div>
+        <div class="total-value none" id="totalValue">0 B</div>
+      </div>
+      <button class="clean-btn" id="cleanBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h18v6H3z"/><path d="M21 9v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9"/><path d="M9 13h6"/></svg>
+        <span id="cleanBtnText">一键清理</span>
+      </button>
     </div>
-    <button class="clean-btn" id="cleanBtn">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h18v6H3z"/><path d="M21 9v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9"/><path d="M9 13h6"/></svg>
-      <span id="cleanBtnText">一键清理</span>
-    </button>
   </div>
+
 </div>
 
 <div class="toast" id="toast"></div>
