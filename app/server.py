@@ -32,7 +32,6 @@ def load_options() -> dict:
         "purge_keep_days": 7,
         "journal_vacuum_size_mb": 100,
         "backup_keep_last": 3,
-        "docker_log_max_mb": 20,
     }
     try:
         with open(OPTIONS_FILE, encoding="utf-8") as fh:

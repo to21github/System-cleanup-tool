@@ -6,11 +6,7 @@
     },
     "journal_vacuum_size_mb": {
       "name": "系统日志上限（MB）",
-      "description": "清理时将 HAOS 系统日志压缩至该大小以内"
-    },
-    "docker_log_max_mb": {
-      "name": "插件日志阈值（MB）",
-      "description": "插件运行日志超过该大小时将被清空"
+      "description": "清理时将 HAOS 系统日志（含各插件运行日志）压缩至该大小以内"
     }
   }
 }

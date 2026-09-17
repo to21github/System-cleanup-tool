@@ -366,55 +366,8 @@ def clean_docker_images() -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# 8. Docker 容器日志 (宿主机)
-# ---------------------------------------------------------------------------
-
-DOCKER_CONTAINERS_DIR = "/mnt/data/docker/containers"
-
-
-def _docker_dir() -> str | None:
-    """宿主机 Docker containers 目录在容器内的可见路径。
-
-    优先 /proc/1/root 直访(host_pid), 否则尝试本地路径。
-    """
-    for base in (HOST_ROOT, ""):
-        path = os.path.join(base, DOCKER_CONTAINERS_DIR.lstrip("/"))
-        if os.path.isdir(path):
-            return path
-    return None
-
-
-def docker_logs_size() -> int:
-    d = _docker_dir()
-    if d is None:
-        return -1
-    return _files_size([os.path.join(d, "*", "*-json.log")])
-
-
-def clean_docker_logs(max_mb: int) -> dict:
-    before = docker_logs_size()
-    if before < 0:
-        raise RuntimeError("无法访问宿主机 Docker 日志目录 (需要 host_pid 权限)")
-
-    # 直接截断超限的容器日志文件 (通过 /proc/1/root 操作宿主机文件)
-    threshold = max_mb * 1024 * 1024
-    freed = 0
-    for f in glob.glob(os.path.join(_docker_dir(), "*", "*-json.log")):
-        try:
-            size = os.path.getsize(f)
-            if size > threshold:
-                _truncate(f)
-                freed += size
-        except OSError:
-            pass
-
-    after = docker_logs_size()
-    return {
-        "freed": freed,
-        "msg": f"已清空超过 {max_mb} MB 的容器日志 (当前占用 {human_size(after)})",
-    }
-
+# 注: HAOS 的 Docker 日志驱动为 journald, 容器(插件/HA Core)日志全部
+# 写入 systemd journal, 由上方 journal 清理项统一管理, 无独立日志文件可清。
 
 # ---------------------------------------------------------------------------
 # 清理项注册表
@@ -439,7 +392,7 @@ class CleanupItems:
             "name": "HAOS 系统日志",
             "size_fn": journal_size,
             "clean_fn": lambda opts: clean_journal(opts["journal_vacuum_size_mb"]),
-            "param_desc": lambda opts: f"HAOS 操作系统与各系统组件的运行日志, 压缩至 {opts['journal_vacuum_size_mb']} MB 以内",
+            "param_desc": lambda opts: f"HAOS 系统、各系统组件及全部插件(含 HA Core)的运行日志, 压缩至 {opts['journal_vacuum_size_mb']} MB 以内",
             "danger": 0,
         },
         "esphome_cache": {
@@ -461,13 +414,6 @@ class CleanupItems:
             "size_fn": docker_images_size,
             "clean_fn": lambda opts: clean_docker_images(),
             "param_desc": lambda opts: "插件更新与本地构建遗留的镜像层和编译缓存",
-            "danger": 1,
-        },
-        "docker_logs": {
-            "name": "插件运行日志",
-            "size_fn": docker_logs_size,
-            "clean_fn": lambda opts: clean_docker_logs(opts["docker_log_max_mb"]),
-            "param_desc": lambda opts: f"各插件(含 HA Core)运行时输出的日志, 清空超过 {opts['docker_log_max_mb']} MB 的部分",
             "danger": 1,
         },
     }

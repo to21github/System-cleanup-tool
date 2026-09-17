@@ -6,11 +6,7 @@
     },
     "journal_vacuum_size_mb": {
       "name": "System log cap (MB)",
-      "description": "Vacuum HAOS system journal down to this size"
-    },
-    "docker_log_max_mb": {
-      "name": "Add-on log threshold (MB)",
-      "description": "Truncate add-on runtime logs larger than this size"
+      "description": "Vacuum HAOS system journal (incl. add-on logs) down to this size"
     }
   }
 }

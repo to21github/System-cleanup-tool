@@ -1,5 +1,5 @@
 name: 系统清理工具
-version: "1.4.2"
+version: "1.4.3"
 slug: system_cleanup_tool
 description: 一键清理 Home Assistant 历史数据库、系统日志、构建缓存与系统垃圾
 arch:
@@ -29,8 +29,6 @@ map:
 options:
   purge_keep_days: 7
   journal_vacuum_size_mb: 100
-  docker_log_max_mb: 20
 schema:
   purge_keep_days: int(0,365)
   journal_vacuum_size_mb: int(10,2000)
-  docker_log_max_mb: int(1,500)
