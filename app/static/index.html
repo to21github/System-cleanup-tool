@@ -37,10 +37,10 @@
     color: var(--text);
     min-height: 100vh;
     min-height: 100dvh; /* 移动端动态视口, HA App/Safari 地址栏收放时仍撑满全屏 */
-    padding-bottom: 24px; /* 桌面端底部留白, 移动端在媒体查询中覆盖 */
+    padding-bottom: calc(96px + env(safe-area-inset-bottom)); /* 固定底栏高度 + 安全区 */
     font-size: 15px;
   }
-  .page { max-width: 720px; margin: 0 auto; padding: 16px; }
+  .page { max-width: 1100px; margin: 0 auto; padding: 16px; }
 
   /* 顶栏 */
   .topbar { display: flex; align-items: center; gap: 12px; padding: 8px 2px 16px; }
@@ -48,7 +48,7 @@
   .topbar .sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
   .refresh-btn {
     background: var(--card); border: 1px solid var(--border); color: var(--text-dim);
-    border-radius: 10px; padding: 8px; cursor: pointer; display: flex; align-items: center;
+    border-radius: 50%; padding: 8px; cursor: pointer; display: flex; align-items: center;
     transition: color .15s;
   }
   .refresh-btn:hover { color: var(--primary); }
@@ -144,22 +144,17 @@
   .err-text { font-size: 11.5px; color: var(--danger); margin-top: 4px; max-width: 180px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  /* 底部操作栏: 桌面为内容流内卡片, 移动端固定贴底 */
+  /* 底部操作栏: 桌面与移动端均固定贴底 */
   .bottom-bar {
-    background: var(--card); border: 1px solid var(--border); border-radius: 16px;
-    padding: 14px 16px;
-    margin-top: 16px;
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--card); border-top: 1px solid var(--border);
+    padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+    z-index: 10;
   }
-  @media (max-width: 720px) {
-    body { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
-    .bottom-bar {
-      position: fixed; bottom: 0; left: 0; right: 0;
-      border: none; border-top: 1px solid var(--border); border-radius: 0;
-      margin: 0; padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
-      z-index: 10;
-    }
+  .bottom-inner {
+    max-width: 1100px; margin: 0 auto; padding: 0 16px;
+    display: flex; align-items: center; gap: 16px;
   }
-  .bottom-inner { max-width: 720px; margin: 0 auto; display: flex; align-items: center; gap: 16px; }
   .total-info { flex: 1; }
   .total-label { font-size: 12px; color: var(--text-dim); margin-bottom: 2px; }
   .total-value { font-size: 18px; font-weight: 700; color: var(--primary); }
@@ -205,7 +200,7 @@
 
   <div class="disk-card">
     <div class="disk-row">
-      <span class="disk-label">数据磁盘使用情况</span>
+      <span class="disk-label">磁盘使用情况</span>
       <span class="disk-value" id="diskText">加载中…</span>
     </div>
     <div class="disk-bar"><div class="disk-fill" id="diskFill" style="width:0%"></div></div>
@@ -288,11 +283,11 @@ function toast(msg) {
 // ---------------------------------------------------------------------------
 
 function renderDisk(disk) {
-  const { total, used, free } = disk;
+  const { total, used } = disk;
   if (!total) { $('diskText').textContent = '无法获取'; return; }
   const pct = Math.round((used / total) * 100);
   $('diskText').innerHTML =
-    `${fmtSize(used)} <small>/ ${fmtSize(total)}（剩余 ${fmtSize(free)}）</small>`;
+    `${fmtSize(used)} <small>/ ${fmtSize(total)}</small>`;
   const fill = $('diskFill');
   fill.style.width = Math.min(pct, 100) + '%';
   fill.className = 'disk-fill' + (pct >= 90 ? ' crit' : pct >= 75 ? ' warn' : '');
