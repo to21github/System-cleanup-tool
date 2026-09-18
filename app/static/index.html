@@ -18,6 +18,10 @@
     --warning: #fb8c00;
     --danger: #e53935;
     --radius: 14px;
+    /* 刷新按钮专属色 */
+    --refresh-bg: #181818;
+    --refresh-border: #363636;
+    --refresh-icon: #a0a0a0;
   }
   @media (prefers-color-scheme: light) {
     :root {
@@ -27,6 +31,9 @@
       --border: #e2e2e8;
       --text: #1c1c1e;
       --text-dim: #6d6d72;
+      --refresh-bg: #ffffff;
+      --refresh-border: #d8d8d8;
+      --refresh-icon: #7b818d;
     }
   }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -47,16 +54,19 @@
   .topbar h1 { font-size: 22px; font-weight: 600; flex: 1; }
   .topbar .sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
   .refresh-btn {
-    background: var(--card); border: 1px solid var(--border); color: var(--text-dim);
+    background: var(--refresh-bg); border: 1px solid var(--refresh-border);
+    color: var(--refresh-icon);
     border-radius: 50%; width: 46px; height: 46px; flex-shrink: 0;
     cursor: pointer; display: flex; align-items: center; justify-content: center;
-    transition: color .15s;
+    transition: color .15s, border-color .15s;
   }
-  .refresh-btn:hover { color: var(--primary); }
-  .refresh-btn svg { width: 18px; height: 18px; }
-  @media (max-width: 720px) {
+  .refresh-btn:hover { color: var(--text); border-color: var(--refresh-icon); }
+  .refresh-btn svg { width: 22px; height: 22px; }
+  /* 刷新中: 图标旋转 */
+  .refresh-btn.loading svg { animation: spin 1s linear infinite; }
+  @media (max-width: 700px) {
     .refresh-btn { width: 40px; height: 40px; }
-    .refresh-btn svg { width: 16px; height: 16px; }
+    .refresh-btn svg { width: 20px; height: 20px; }
   }
 
   /* 磁盘卡片 */
@@ -371,6 +381,8 @@ async function loadInfo() {
   } catch (err) {
     $('itemList').innerHTML =
       `<div class="loading-page">加载失败: ${err.message}，请确认 Add-on 运行正常</div>`;
+  } finally {
+    $('refreshBtn').classList.remove('loading');
   }
 }
 
@@ -506,7 +518,12 @@ async function pollStatus() {
 // ---------------------------------------------------------------------------
 
 $('cleanBtn').addEventListener('click', startClean);
-$('refreshBtn').addEventListener('click', () => { if (!running) { toast('正在重新扫描…'); loadInfo(); } });
+$('refreshBtn').addEventListener('click', () => {
+  if (running) return;
+  toast('正在重新扫描…');
+  $('refreshBtn').classList.add('loading');
+  loadInfo();
+});
 $('toggleAllBtn').addEventListener('click', () => {
   if (running) return;
   const allChecked = items.length > 0 && checked.size === items.length;
