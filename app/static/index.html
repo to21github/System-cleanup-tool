@@ -48,11 +48,16 @@
   .topbar .sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
   .refresh-btn {
     background: var(--card); border: 1px solid var(--border); color: var(--text-dim);
-    border-radius: 50%; padding: 8px; cursor: pointer; display: flex; align-items: center;
+    border-radius: 50%; width: 46px; height: 46px; flex-shrink: 0;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
     transition: color .15s;
   }
   .refresh-btn:hover { color: var(--primary); }
   .refresh-btn svg { width: 18px; height: 18px; }
+  @media (max-width: 720px) {
+    .refresh-btn { width: 40px; height: 40px; }
+    .refresh-btn svg { width: 16px; height: 16px; }
+  }
 
   /* 磁盘卡片 */
   .disk-card {
