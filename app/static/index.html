@@ -357,6 +357,17 @@ async function loadInfo() {
     renderDisk(data.disk);
     renderItems();
     $('subTitle').textContent = 'Home Assistant 系统垃圾一键清理';
+    const lr = data.last_run;
+    if (lr && lr.interrupted) {
+      $('subTitle').textContent = '上次清理被插件重启中断，清理结果未知';
+    } else if (lr && lr.finished_at) {
+      const d = new Date(lr.finished_at * 1000);
+      const pad = (n) => String(n).padStart(2, '0');
+      const count = (lr.results || []).length;
+      $('subTitle').textContent =
+        `上次清理 ${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}` +
+        ` · ${count} 项 · 释放 ${fmtSize(lr.total_freed || 0)}`;
+    }
   } catch (err) {
     $('itemList').innerHTML =
       `<div class="loading-page">加载失败: ${err.message}，请确认 Add-on 运行正常</div>`;

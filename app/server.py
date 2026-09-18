@@ -14,6 +14,7 @@ import cleaner
 from cleaner import CleanupItems, _sup, human_size
 
 OPTIONS_FILE = os.environ.get("OPTIONS_FILE", "/data/options.json")
+LAST_RUN_FILE = os.environ.get("LAST_RUN_FILE", "/data/last_cleanup.json")
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
 app = Flask(__name__, static_folder=None)
@@ -38,6 +39,31 @@ def load_options() -> dict:
     except (OSError, ValueError):
         pass
     return defaults
+
+
+def _read_last_run() -> dict | None:
+    try:
+        with open(LAST_RUN_FILE, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return None
+
+
+def _save_last_run(data: dict) -> None:
+    try:
+        with open(LAST_RUN_FILE, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, ensure_ascii=False)
+    except OSError:
+        pass  # 持久化失败不影响清理本身
+
+
+# 进程刚启动时不可能有进行中的任务:
+# 文件若标记 running 说明上次清理被插件重启中断, 转为中断记录
+_startup_last_run = _read_last_run()
+if _startup_last_run and _startup_last_run.get("running"):
+    _startup_last_run["running"] = False
+    _startup_last_run["interrupted"] = True
+    _save_last_run(_startup_last_run)
 
 
 def probe_items(options: dict) -> list[dict]:
@@ -94,7 +120,8 @@ def api_info():
     options = load_options()
     disk = get_disk_info()
     items = probe_items(options)
-    return jsonify({"ok": True, "options": options, "disk": disk, "items": items})
+    return jsonify({"ok": True, "options": options, "disk": disk, "items": items,
+                    "last_run": _read_last_run()})
 
 
 @app.post("/api/clean")
@@ -117,6 +144,11 @@ def api_clean():
             total_freed=0, started_at=time.time(),
             finished_at=None, error=None,
         )
+        _save_last_run({
+            "running": True,
+            "started_at": _task["started_at"],
+            "selected_total": len(selected),
+        })
 
     thread = threading.Thread(target=_run_task, args=(selected,), daemon=True)
     thread.start()
@@ -152,6 +184,15 @@ def _run_task(selected: list[str]) -> None:
         _task["current"] = None
         _task["current_name"] = None
         _task["finished_at"] = time.time()
+        _save_last_run({
+            "running": False,
+            "interrupted": False,
+            "started_at": _task["started_at"],
+            "finished_at": _task["finished_at"],
+            "selected_total": _task["selected_total"],
+            "results": _task["results"],
+            "total_freed": _task["total_freed"],
+        })
 
 
 if __name__ == "__main__":
