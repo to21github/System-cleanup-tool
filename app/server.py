@@ -6,12 +6,11 @@ import json
 import os
 import threading
 import time
-import uuid
+from concurrent.futures import ThreadPoolExecutor
 
 from flask import Flask, jsonify, request, send_from_directory
 
-import cleaner
-from cleaner import CleanupItems, _sup, human_size
+from cleaner import CleanupItems, human_size
 
 OPTIONS_FILE = os.environ.get("OPTIONS_FILE", "/data/options.json")
 LAST_RUN_FILE = os.environ.get("LAST_RUN_FILE", "/data/last_cleanup.json")
@@ -66,29 +65,42 @@ if _startup_last_run and _startup_last_run.get("running"):
     _save_last_run(_startup_last_run)
 
 
+def _probe_one(item_id: str, spec: dict, options: dict) -> dict:
+    """探测单个清理项, 任何异常都收敛为 error 字段, 不向上抛。"""
+    size, error = -1, None
+    try:
+        size = spec["size_fn"]()
+    except Exception as exc:  # noqa: BLE001
+        error = str(exc) or exc.__class__.__name__
+    if size < 0 and not error:
+        error = "无法访问宿主机资源 (权限不足)"
+    return {
+        "id": item_id,
+        "name": spec["name"],
+        "checked": item_id in CleanupItems.DEFAULT_CHECKED,
+        "size": size,
+        "size_text": human_size(size) if size >= 0 else "未知",
+        "param": spec["param_desc"](options),
+        "danger": spec["danger"],
+        "error": error,
+    }
+
+
 def probe_items(options: dict) -> list[dict]:
-    """探测每个清理项的当前大小。单项失败不影响整体。"""
-    items = []
-    for item_id, spec in CleanupItems.REGISTRY.items():
-        size = -1
-        error = None
-        try:
-            size = spec["size_fn"]()
-        except Exception as exc:  # noqa: BLE001
-            error = str(exc)
-        if size < 0 and not error:
-            error = "无法访问宿主机资源 (权限不足)"
-        items.append({
-            "id": item_id,
-            "name": spec["name"],
-            "checked": item_id in CleanupItems.DEFAULT_CHECKED,
-            "size": size,
-            "size_text": human_size(size) if size >= 0 else "未知",
-            "param": spec["param_desc"](options),
-            "danger": spec["danger"],
-            "error": error,
-        })
-    return items
+    """并行探测各清理项当前大小, 顺序与注册表一致。
+
+    探测均为只读操作可安全并行; 总耗时由最慢一项决定而非逐项累加
+    (journal/Docker 探测在宿主机繁忙时可能达到数十秒)。
+    """
+    registry = list(CleanupItems.REGISTRY.items())
+    if not registry:
+        return []
+    with ThreadPoolExecutor(max_workers=len(registry)) as ex:
+        futures = [
+            (item_id, ex.submit(_probe_one, item_id, spec, options))
+            for item_id, spec in registry
+        ]
+        return [fut.result() for _item_id, fut in futures]
 
 
 def get_disk_info() -> dict:
@@ -128,8 +140,11 @@ def api_info():
 def api_clean():
     body = request.get_json(silent=True) or {}
     selected = body.get("items", [])
+    if not isinstance(selected, list) or not all(isinstance(i, str) for i in selected):
+        return jsonify({"ok": False, "error": "参数 items 必须为字符串数组"}), 400
     if not selected:
         return jsonify({"ok": False, "error": "未选择任何清理项"}), 400
+    selected = list(dict.fromkeys(selected))  # 去重, 防止同一项重复执行
 
     unknown = [i for i in selected if i not in CleanupItems.REGISTRY]
     if unknown:

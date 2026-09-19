@@ -9,9 +9,11 @@
 from __future__ import annotations
 
 import glob
+import http.client
 import json
 import os
 import shutil
+import socket
 import subprocess
 import time
 
@@ -162,12 +164,17 @@ def clean_recorder(keep_days: int) -> dict:
                 pass
 
     # 调用 Home Assistant 服务 (经 Supervisor 代理)
-    _sup(
-        "POST",
-        "/core/api/services/recorder/purge",
-        json_body={"keep_days": keep_days, "repack": True},
-        timeout=60,
-    )
+    try:
+        _sup(
+            "POST",
+            "/core/api/services/recorder/purge",
+            json_body={"keep_days": keep_days, "repack": True},
+            timeout=60,
+        )
+    except requests.RequestException as exc:
+        raise RuntimeError(
+            f"调用 Home Assistant recorder.purge 服务失败: {exc}"
+        ) from exc
 
     # purge 在 HA 后台执行, 轮询数据库文件大小直至稳定 (最多 30 分钟)
     last = -1
@@ -219,7 +226,43 @@ def clean_z2m_logs() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# 3. 系统 journal 日志 (宿主机)
+# 3. HA Core 日志文件
+# ---------------------------------------------------------------------------
+
+def core_logs_size() -> int:
+    """HA Core 日志: 主日志 + 轮转/故障日志 (home-assistant.log.1 等)。
+
+    HAOS 上 Core 日志同时写入 journald (由 journal 清理项管理),
+    这里只处理配置目录下的日志文件。
+    """
+    return _path_size(CORE_LOG) + _files_size([CORE_LOG + ".*"])
+
+
+def clean_core_logs() -> dict:
+    before = core_logs_size()
+    if before == 0:
+        return {"freed": 0, "msg": "没有可清理的 Core 日志文件"}
+
+    # 轮转与故障日志文件直接删除
+    for f in glob.glob(CORE_LOG + ".*"):
+        try:
+            os.remove(f)
+        except OSError:
+            pass
+
+    # 主日志清空但保留 inode, 正在被写的日志也安全
+    if os.path.isfile(CORE_LOG):
+        try:
+            _truncate(CORE_LOG)
+        except OSError:
+            pass
+
+    after = core_logs_size()
+    return {"freed": max(before - after, 0), "msg": "已清空 HA Core 日志文件"}
+
+
+# ---------------------------------------------------------------------------
+# 4. 系统 journal 日志 (宿主机)
 # ---------------------------------------------------------------------------
 
 def journal_size() -> int:
@@ -282,26 +325,44 @@ def clean_journal(vacuum_size_mb: int) -> dict:
 DOCKER_SOCK = "/var/run/docker.sock"
 
 
-def _docker_curl(method: str, path: str, timeout: int = 120) -> str:
-    """通过 Docker unix socket 调用 API, 返回响应文本。"""
-    proc = subprocess.run(
-        [
-            "curl", "-sS", "-X", method,
-            "--max-time", str(timeout),
-            "--unix-socket", DOCKER_SOCK,
-            f"http://localhost{path}",
-        ],
-        capture_output=True,
-        text=True,
-        timeout=timeout + 10,
-    )
-    if proc.returncode != 0:
-        raise RuntimeError(f"Docker API 请求失败: {proc.stderr.strip()}")
-    return proc.stdout
+class _UnixHTTPConnection(http.client.HTTPConnection):
+    """通过 unix socket 连接 Docker API 的 HTTP 连接 (无外部依赖)。"""
+
+    def __init__(self, socket_path: str, timeout: float = 60) -> None:
+        super().__init__("localhost", timeout=timeout)
+        self._socket_path = socket_path
+
+    def connect(self) -> None:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(self.timeout)
+        sock.connect(self._socket_path)
+        self.sock = sock
+
+
+def _docker_request(method: str, path: str, timeout: int = 120) -> str:
+    """调用 Docker API (unix socket), 返回响应体文本。
+
+    相比 curl 子进程: 不依赖镜像内 curl, 且能识别 HTTP 错误状态码
+    (如删除镜像被拒时的 409), 失败信息更明确。
+    """
+    conn = _UnixHTTPConnection(DOCKER_SOCK, timeout=timeout)
+    try:
+        # 注意: http.client 不支持绝对 URL (不会像 curl 那样剥离 scheme/host),
+        # 必须直接传 path, 否则请求行会成为代理形式的绝对 URI
+        conn.request(method, path)
+        resp = conn.getresponse()
+        body = resp.read().decode("utf-8", "replace")
+        if resp.status >= 400:
+            raise RuntimeError(f"Docker API {method} {path} 失败: HTTP {resp.status}")
+        return body
+    except OSError as exc:
+        raise RuntimeError(f"无法连接 Docker API ({exc})") from exc
+    finally:
+        conn.close()
 
 
 def _dangling_images() -> list[dict]:
-    out = _docker_curl(
+    out = _docker_request(
         "GET", "/images/json?filters=%7B%22dangling%22%3A%5B%22true%22%5D%7D",
         timeout=60,
     )
@@ -310,7 +371,7 @@ def _dangling_images() -> list[dict]:
 
 def _build_cache_size() -> int:
     """未使用的 Docker 构建缓存 (本地构建插件的中间层)。"""
-    out = _docker_curl("GET", "/system/df", timeout=60)
+    out = _docker_request("GET", "/system/df", timeout=60)
     df = json.loads(out or "null") or {}
     caches = df.get("BuildCache") or []
     return sum(int(c.get("Size") or 0) for c in caches if not c.get("InUse"))
@@ -331,23 +392,23 @@ def clean_docker_images() -> dict:
     if before < 0:
         raise RuntimeError("无法访问 Docker API (需要 docker_api 权限)")
 
-    # 1) 删除悬空镜像 (插件更新遗留)
+    # 1) 删除悬空镜像 (插件更新遗留); 单个失败(被引用 409 等)只跳过不中断
     images = _dangling_images()
     freed = 0
     removed = 0
     for img in images:
         image_id = (img.get("Id") or "").split(":")[-1]  # sha256:xxx -> xxx
         try:
-            _docker_curl("DELETE", f"/images/{image_id}", timeout=180)
+            _docker_request("DELETE", f"/images/{image_id}", timeout=180)
             freed += int(img.get("Size") or 0)
             removed += 1
-        except Exception:
-            pass
+        except Exception:  # noqa: BLE001
+            continue
 
     # 2) 清理未使用的构建缓存 (本地构建插件的中间层)
     cache_freed = 0
     try:
-        out = _docker_curl("POST", "/build/prune?all=1", timeout=300)
+        out = _docker_request("POST", "/build/prune?all=1", timeout=300)
         result = json.loads(out or "null") or {}
         cache_freed = int(result.get("SpaceReclaimed") or 0)
     except Exception:
@@ -395,6 +456,13 @@ class CleanupItems:
             "param_desc": lambda opts: f"HAOS 系统、各系统组件及全部插件(含 HA Core)的运行日志, 压缩至 {opts['journal_vacuum_size_mb']} MB 以内",
             "danger": 0,
         },
+        "core_logs": {
+            "name": "HA Core 日志",
+            "size_fn": core_logs_size,
+            "clean_fn": lambda opts: clean_core_logs(),
+            "param_desc": lambda opts: "Home Assistant Core 运行日志文件及轮转文件, 不含历史数据库",
+            "danger": 0,
+        },
         "esphome_cache": {
             "name": "ESPhome 构建缓存",
             "size_fn": esphome_cache_size,
@@ -421,6 +489,7 @@ class CleanupItems:
     DEFAULT_CHECKED = [
         "recorder_db",
         "journal",
+        "core_logs",
         "esphome_cache",
         "z2m_logs",
         "docker_images",
