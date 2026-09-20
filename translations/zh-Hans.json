@@ -1,0 +1,12 @@
+{
+  "configuration": {
+    "purge_keep_days": {
+      "name": "历史数据保留天数",
+      "description": "清理此天数之前的历史记录，0 表示清空全部历史"
+    },
+    "journal_vacuum_size_mb": {
+      "name": "系统日志上限（MB）",
+      "description": "清理时将 HAOS 系统日志（含各插件运行日志）压缩至该大小以内"
+    }
+  }
+}
