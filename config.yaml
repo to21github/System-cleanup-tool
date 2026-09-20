@@ -1,5 +1,5 @@
 name: 系统清理工具
-version: "2.5.0"
+version: "1.0.0"
 slug: system_cleanup_tool
 description: 一键清理 Home Assistant 历史数据库、系统日志、构建缓存与系统垃圾
 arch:
